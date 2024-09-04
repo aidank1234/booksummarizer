@@ -77,113 +77,29 @@ function parseS3Uri(s3Uri: string): { Bucket: string; Key: string } {
   return { Bucket, Key };
 }
 
-// Smart Chunking Logic with case-insensitive "Chapter" detection and sentence grouping
+// Smart Chunking Logic with flat section numbering
 function smartChunkText(text: string): Chunk[] {
   console.log('Starting text chunking process');
-  const chunkSize = 100000; // Max chunk size in characters (~20,000 words)
+  const chunkSize = 50000; // Target chunk size in characters (~10,000 words)
   const chunks: Chunk[] = [];
 
-  // Updated pattern to match "Chapter" case-insensitive
-  const chapterPattern = /\bchapter\b/gi;
-  const matches = Array.from(text.matchAll(chapterPattern));
-
-  let chapterNumber = 0;
-  let sectionNumber = 1;
-  let lastIndex = 0;
-
-  if (matches.length > 0) {
-    console.log(`Pattern "Chapter" found, number of matches: ${matches.length}`);
-
-    // Handle any prefix text before the first chapter
-    if (matches[0].index! > 0) {
-      const prefixContent = text.slice(0, matches[0].index).trim();
-      if (prefixContent) {
-        chunks.push({ chunkName: `Prefix 1.1`, chunkContent: prefixContent });
-        console.log(`Created chunk: Prefix 1.1, length: ${prefixContent.length}`);
-      }
-    }
-
-    for (const [i, match] of matches.entries()) {
-      chapterNumber++;
-      sectionNumber = 1;
-
-      if (match.index !== undefined && match.index > lastIndex) {
-        // Create a chunk for the text before the current chapter
-        if (lastIndex > 0) {
-          const chunkContent = text.slice(lastIndex, match.index).trim();
-          if (chunkContent) {
-            chunks.push({
-              chunkName: `Chapter ${chapterNumber - 1}.${sectionNumber}`,
-              chunkContent
-            });
-            console.log(`Created chunk: Chapter ${chapterNumber - 1}.${sectionNumber}, length: ${chunkContent.length}`);
-            sectionNumber++;
-          }
-        }
-
-        lastIndex = match.index;
-
-        // Handle the current chapter text
-        const nextIndex = matches[i + 1]?.index ?? text.length;
-        const chapterContent = text.slice(match.index, nextIndex).trim();
-
-        chunks.push({ chunkName: `Chapter ${chapterNumber}.1`, chunkContent: chapterContent });
-        console.log(`Created chunk: Chapter ${chapterNumber}.1, length: ${chapterContent.length}`);
-
-        lastIndex = nextIndex;
-      }
-    }
-
-    // Add any remaining text as the last chunk (if it exists)
-    if (lastIndex < text.length) {
-      const chunkContent = text.slice(lastIndex).trim();
-      if (chunkContent) {
-        chunks.push({ chunkName: `Suffix ${chapterNumber + 1}.1`, chunkContent: chunkContent });
-        console.log(`Added final chunk: Suffix ${chapterNumber + 1}.1, length: ${chunkContent.length}`);
-      }
-    }
-  } else {
-    // If no pattern is found, treat the entire text as one section
-    chunks.push({ chunkName: 'Section 1.1', chunkContent: text });
-    console.log('No patterns found, treating entire text as one chunk');
-  }
-
-  // Fallback: Split large chunks into smaller chunks based on grouped sentences
-  const finalChunks: Chunk[] = [];
-  for (const chunk of chunks) {
-    if (chunk.chunkContent.length > chunkSize) {
-      console.log(`Chunk too large, splitting: ${chunk.chunkName}`);
-      finalChunks.push(...fallbackChunking(chunk.chunkContent, chunk.chunkName, chunkSize));
-    } else {
-      finalChunks.push(chunk);
-    }
-  }
-
-  console.log('Text chunking process completed');
-  return finalChunks;
-}
-
-// Fallback function to split large chunks into smaller chunks based on grouped sentences
-function fallbackChunking(text: string, baseName: string, maxChunkSize: number): Chunk[] {
-  const chunks: Chunk[] = [];
+  // Split by sentences
+  const sentences = text.match(/[^.!?]*[.!?]/g) || [text];
   let currentChunk = '';
   let sectionNumber = 1;
   let sentenceGroup: string[] = [];
 
-  // Split by sentences
-  const sentences = text.match(/[^.!?]*[.!?]/g) || [text]; // Split by sentences
-  
   for (const sentence of sentences) {
     sentenceGroup.push(sentence);
-    if (sentenceGroup.length >= 4 || (currentChunk.length + sentence.length) > maxChunkSize) {
+    if (sentenceGroup.length >= 4 || (currentChunk.length + sentence.length) > chunkSize) {
       const groupContent = sentenceGroup.join(' ');
-      if ((currentChunk.length + groupContent.length) > maxChunkSize) {
+      if ((currentChunk.length + groupContent.length) > chunkSize) {
         // Save the current chunk
         chunks.push({
-          chunkName: `${baseName}.${sectionNumber}`,
+          chunkName: `Section ${sectionNumber}`,
           chunkContent: currentChunk.trim()
         });
-        console.log(`Created fallback chunk: ${baseName}.${sectionNumber}, length: ${currentChunk.length}`);
+        console.log(`Created chunk: Section ${sectionNumber}, length: ${currentChunk.length}`);
         sectionNumber++;
         currentChunk = '';  // Start a new chunk
       }
@@ -195,11 +111,12 @@ function fallbackChunking(text: string, baseName: string, maxChunkSize: number):
   // Add any remaining content as the last chunk
   if (currentChunk.length > 0) {
     chunks.push({
-      chunkName: `${baseName}.${sectionNumber}`,
+      chunkName: `Section ${sectionNumber}`,
       chunkContent: currentChunk.trim()
     });
-    console.log(`Added final fallback chunk: ${baseName}.${sectionNumber}, length: ${currentChunk.length}`);
+    console.log(`Added final chunk: Section ${sectionNumber}, length: ${currentChunk.length}`);
   }
 
+  console.log('Text chunking process completed');
   return chunks;
 }
