@@ -80,7 +80,7 @@ function parseS3Uri(s3Uri: string): { Bucket: string; Key: string } {
 // Smart Chunking Logic with flat section numbering
 function smartChunkText(text: string): Chunk[] {
   console.log('Starting text chunking process');
-  const chunkSize = 50000; // Target chunk size in characters (~10,000 words)
+  const chunkSize = 40000; // Target chunk size in characters (~10,000 words)
   const chunks: Chunk[] = [];
 
   // Split by sentences

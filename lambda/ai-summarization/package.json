@@ -1,5 +1,5 @@
 {
-  "name": "save-output",
+  "name": "ai-summarization",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -11,6 +11,7 @@
   "license": "ISC",
   "types": "./index.d.ts",
   "dependencies": {
-    "aws-sdk": "^2.1688.0"
+    "aws-sdk": "^2.1688.0",
+    "axios": "^1.7.7"
   }
 }

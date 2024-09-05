@@ -11,6 +11,12 @@ export class SummarizerStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    // Ensure OPENAI_API_KEY is defined
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    if (!openaiApiKey) {
+      throw new Error('OPENAI_API_KEY environment variable is not defined');
+    }
+
     // Create the DynamoDB table
     const summarizerTable = new dynamodb.Table(this, 'SummarizerTable', {
       partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
@@ -42,7 +48,8 @@ export class SummarizerStack extends cdk.Stack {
     const environmentVariables = {
       TABLE_NAME: summarizerTable.tableName,
       OUTPUT_BUCKET: outputBucket.bucketName,
-      SUMMARY_BUCKET: summaryBucket.bucketName
+      SUMMARY_BUCKET: summaryBucket.bucketName,
+      OPENAI_API_KEY: openaiApiKey  // Ensure the API key is a string
     };
 
     // Lambda function to get file from DynamoDB and S3
@@ -78,22 +85,23 @@ export class SummarizerStack extends cdk.Stack {
     // Grant the Lambda function read access to the output S3 bucket (for fetching chunks)
     outputBucket.grantRead(smartChunkLambda);
 
-    // Lambda function to save chunks back to S3 and update DynamoDB
-    const saveChunksLambda = new lambda.Function(this, 'SaveChunksLambda', {
+    // Lambda function for AI-based summarization (after chunking)
+    const aiSummarizationLambda = new lambda.Function(this, 'AISummarizationLambda', {
       runtime: lambda.Runtime.NODEJS_18_X,
       handler: 'index.handler',
-      code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/save-output')),
+      code: lambda.Code.fromAsset(path.join(__dirname, '../lambda/ai-summarization')),
       environment: environmentVariables,
-      timeout: cdk.Duration.seconds(120),
+      timeout: cdk.Duration.seconds(900),  // Adjust based on expected completion time
     });
 
-    outputBucket.grantRead(saveChunksLambda);
+    // Grant the Lambda function read access to the output S3 bucket (for fetching chunked data)
+    outputBucket.grantRead(aiSummarizationLambda);
 
-    // Grant the Lambda function write access to the summary S3 bucket
-    summaryBucket.grantWrite(saveChunksLambda);
+    // Grant the Lambda function write access to the summary S3 bucket (for storing the final summary)
+    summaryBucket.grantWrite(aiSummarizationLambda);
 
-    // Grant the Lambda function write access to the DynamoDB table
-    summarizerTable.grantWriteData(saveChunksLambda);
+    // Grant the Lambda function write access to the DynamoDB table (for updating output URL)
+    summarizerTable.grantWriteData(aiSummarizationLambda);
 
     // Define the Step Function tasks
     const getFileTask = new tasks.LambdaInvoke(this, 'Get File Task', {
@@ -106,19 +114,19 @@ export class SummarizerStack extends cdk.Stack {
       outputPath: '$.Payload'
     });
 
-    const saveChunksTask = new tasks.LambdaInvoke(this, 'Save Chunks Task', {
-      lambdaFunction: saveChunksLambda,
+    const aiSummarizationTask = new tasks.LambdaInvoke(this, 'AI Summarization Task', {
+      lambdaFunction: aiSummarizationLambda,
       outputPath: '$.Payload'
     });
 
     // Define the Step Function workflow
     const definition = getFileTask
       .next(smartChunkTask)
-      .next(saveChunksTask);
+      .next(aiSummarizationTask);
 
     const summarizerStateMachine = new stepfunctions.StateMachine(this, 'SummarizerStateMachine', {
       definition,
-      timeout: cdk.Duration.minutes(5)
+      timeout: cdk.Duration.minutes(10)  // Adjust as needed
     });
 
     // Outputs
